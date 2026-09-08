@@ -27,8 +27,6 @@ public class SpotifyTokenTracker {
     private static final String NUANCE_URL = "https://gist.githubusercontent.com/saraansx/a622d4c1a12c36afdcf701201e9482a3/raw/9afe2c9c7d1a5eb3f7a05d0002a94f45b73682d0/nuance.json";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36";
 
-    private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 120;
-
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -123,13 +121,15 @@ public class SpotifyTokenTracker {
             if (expiresMs > 0) {
                 long adjustedNow = System.currentTimeMillis() + this.clockDriftMs;
                 long remainingMs = expiresMs - adjustedNow;
-                if (remainingMs < TOKEN_EXPIRY_BUFFER_SECONDS * 1000L) {
+                if (remainingMs <= 0) {
                     throw new IOException("Token already expired (remaining " + remainingMs + "ms)");
                 }
-                expiry = Instant.now().plusMillis(remainingMs - (TOKEN_EXPIRY_BUFFER_SECONDS * 1000L));
+                long safeBufferMs = Math.min(remainingMs / 2, 5000L);
+                expiry = Instant.now().plusMillis(remainingMs - safeBufferMs);
             } else {
                 long expiresIn = json.path("expires_in").asLong(3600);
-                expiry = Instant.now().plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
+                long safeBufferSecs = Math.min(expiresIn / 2, 5L);
+                expiry = Instant.now().plusSeconds(expiresIn - safeBufferSecs);
             }
 
             this.anonymousAccessToken = token;
